@@ -43,6 +43,12 @@ Reservation Service
 
 Each service owns its own database. There is no distributed transaction. Cross-service workflow is handled with Saga + Outbox + Inbox.
 
+## Scaling Notes
+
+Both services can run multiple instances behind a load balancer. Inventory correctness is protected by PostgreSQL row locks, so concurrent reservations for the same SKU are serialized by the database.
+
+Outbox publishers use `FOR UPDATE SKIP LOCKED`, which lets multiple service instances publish different outbox rows without picking the same event. RabbitMQ listeners use retry with exponential backoff and dead-letter queues, so repeatedly failing messages are moved aside instead of blocking normal traffic.
+
 ## Design Patterns
 
 - State Pattern: `reservation-service/src/main/java/com/example/reservation/domain/state/ReservationStateMachine.java` controls valid lifecycle transitions.

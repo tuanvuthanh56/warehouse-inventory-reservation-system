@@ -1,0 +1,54 @@
+# Maven / Java
+target/
+*.class
+*.jar
+*.war
+*.ear
+*.nar
+*.log
+hs_err_pid*
+replay_pid*
+
+# Spring Boot / local config
+application-local.yml
+application-local.yaml
+application-*.local.yml
+application-*.local.yaml
+.env
+.env.*
+!.env.example
+
+# IDEs
+.idea/
+*.iml
+*.iws
+.vscode/
+.classpath
+.project
+.settings/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Test / coverage
+surefire-reports/
+failsafe-reports/
+jacoco.exec
+coverage/
+
+# Docker / local runtime
+docker-compose.override.yml
+*.pid
+
+# Node or generated frontend artifacts if added later
+node_modules/
+dist/
+build/
+
+# Temporary files
+*.tmp
+*.swp
+*.swo
+*.bak

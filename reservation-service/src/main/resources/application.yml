@@ -1,0 +1,27 @@
+server:
+  port: ${RESERVATION_SERVICE_PORT:8081}
+
+spring:
+  application:
+    name: reservation-service
+  datasource:
+    url: ${RESERVATION_DB_URL:jdbc:postgresql://localhost:5433/reservation_db}
+    username: ${RESERVATION_DB_USER:reservation}
+    password: ${RESERVATION_DB_PASSWORD:reservation}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:app}
+    password: ${RABBITMQ_PASSWORD:app}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

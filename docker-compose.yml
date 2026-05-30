@@ -1,0 +1,85 @@
+services:
+  reservation-db:
+    image: postgres:16-alpine
+    container_name: reservation-db
+    environment:
+      POSTGRES_DB: reservation_db
+      POSTGRES_USER: reservation
+      POSTGRES_PASSWORD: reservation
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U reservation -d reservation_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  inventory-db:
+    image: postgres:16-alpine
+    container_name: inventory-db
+    environment:
+      POSTGRES_DB: inventory_db
+      POSTGRES_USER: inventory
+      POSTGRES_PASSWORD: inventory
+    ports:
+      - "5434:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U inventory -d inventory_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: inventory-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: app
+      RABBITMQ_DEFAULT_PASS: app
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  reservation-service:
+    build:
+      context: .
+      dockerfile: reservation-service/Dockerfile
+    container_name: reservation-service
+    environment:
+      RESERVATION_DB_URL: jdbc:postgresql://reservation-db:5432/reservation_db
+      RESERVATION_DB_USER: reservation
+      RESERVATION_DB_PASSWORD: reservation
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: app
+      RABBITMQ_PASSWORD: app
+    ports:
+      - "8081:8081"
+    depends_on:
+      reservation-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  inventory-service:
+    build:
+      context: .
+      dockerfile: inventory-service/Dockerfile
+    container_name: inventory-service
+    environment:
+      INVENTORY_DB_URL: jdbc:postgresql://inventory-db:5432/inventory_db
+      INVENTORY_DB_USER: inventory
+      INVENTORY_DB_PASSWORD: inventory
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: app
+      RABBITMQ_PASSWORD: app
+    ports:
+      - "8082:8082"
+    depends_on:
+      inventory-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy

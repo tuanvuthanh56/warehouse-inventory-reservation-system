@@ -14,6 +14,7 @@ import com.example.inventory.api.dto.InventoryResponse;
 import com.example.inventory.api.error.ApiException;
 import com.example.inventory.api.error.ConflictException;
 import com.example.inventory.api.error.NotFoundException;
+import com.example.inventory.domain.factory.InventoryHoldFactory;
 import com.example.inventory.domain.model.InventoryHoldStatus;
 import com.example.inventory.infrastructure.persistence.InboxMessageEntity;
 import com.example.inventory.infrastructure.persistence.InboxMessageRepository;
@@ -32,20 +33,28 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+/**
+ * Owns all stock mutations and keeps reservation, confirmation, and release flows idempotent.
+ */
 @Service
 public class InventoryApplicationService {
+
     private final InventoryRepository inventoryRepository;
+
     private final InventoryHoldRepository inventoryHoldRepository;
+
     private final OutboxEventRepository outboxEventRepository;
+
     private final InboxMessageRepository inboxMessageRepository;
+
+    private final InventoryHoldFactory inventoryHoldFactory;
+
     private final ObjectMapper objectMapper;
 
     public InventoryApplicationService(
@@ -53,12 +62,14 @@ public class InventoryApplicationService {
             InventoryHoldRepository inventoryHoldRepository,
             OutboxEventRepository outboxEventRepository,
             InboxMessageRepository inboxMessageRepository,
+            InventoryHoldFactory inventoryHoldFactory,
             ObjectMapper objectMapper
     ) {
         this.inventoryRepository = inventoryRepository;
         this.inventoryHoldRepository = inventoryHoldRepository;
         this.outboxEventRepository = outboxEventRepository;
         this.inboxMessageRepository = inboxMessageRepository;
+        this.inventoryHoldFactory = inventoryHoldFactory;
         this.objectMapper = objectMapper;
     }
 
@@ -70,39 +81,51 @@ public class InventoryApplicationService {
                         "Inventory not found for SKU.",
                         Map.of("sku", sku)
                 ));
-        return new InventoryResponse(
-                inventory.getSku(),
-                inventory.getOnHandStock(),
-                inventory.getAvailableStock(),
-                inventory.getReservedStock(),
-                inventory.getUpdatedAt()
-        );
+        return toResponse(inventory);
     }
 
+    @Transactional(readOnly = true)
+    public List<InventoryResponse> listStock() {
+        return inventoryRepository.findAllByOrderBySkuAsc().stream()
+                .map(this::toResponse)
+                .toList();
+    }
+
+    /**
+     * Reserves all requested SKUs atomically, or rejects the entire request.
+     */
     @Transactional
     public void reserve(ReserveInventoryCommand command) {
+        // RabbitMQ may redeliver commands; the inbox table prevents duplicate side effects.
         if (alreadyProcessed(command.messageId())) {
             return;
         }
+
+        // A repeated reservation id must replay the prior result, not reserve stock again.
         inventoryHoldRepository.findByReservationId(command.reservationId()).ifPresent(existing -> {
             saveReservedEvent(command, existing);
             inboxMessageRepository.save(new InboxMessageEntity(command.messageId(), ReserveInventoryCommand.class.getSimpleName()));
         });
+
         if (alreadyProcessed(command.messageId())) {
             return;
         }
 
-        List<ReservationItemMessage> items = mergeItems(command.items());
-        List<String> skus = items.stream().map(ReservationItemMessage::sku).sorted().toList();
+        // The factory validates items, merges duplicate SKUs, and creates the initial HELD hold.
+        InventoryHoldEntity hold = inventoryHoldFactory.createHeldHold(command.reservationId(), command.orderId(), command.items());
+        List<String> skus = hold.getItems().stream().map(InventoryHoldItemEntity::getSku).sorted().toList();
+
+        // Pessimistic row locks prevent concurrent reservations from overselling the same SKU.
         Map<String, InventoryEntity> inventoryBySku = inventoryRepository.findAllBySkuInForUpdate(skus).stream()
                 .collect(Collectors.toMap(InventoryEntity::getSku, Function.identity()));
 
+        // Validate the complete request before mutating stock so there is no partial reservation.
         List<UnavailableItemMessage> unavailableItems = new ArrayList<>();
-        for (ReservationItemMessage item : items) {
-            InventoryEntity inventory = inventoryBySku.get(item.sku());
+        for (InventoryHoldItemEntity item : hold.getItems()) {
+            InventoryEntity inventory = inventoryBySku.get(item.getSku());
             int available = inventory == null ? 0 : inventory.getAvailableStock();
-            if (inventory == null || available < item.quantity()) {
-                unavailableItems.add(new UnavailableItemMessage(item.sku(), item.quantity(), available));
+            if (inventory == null || available < item.getQuantity()) {
+                unavailableItems.add(new UnavailableItemMessage(item.getSku(), item.getQuantity(), available));
             }
         }
 
@@ -120,30 +143,34 @@ public class InventoryApplicationService {
             return;
         }
 
-        Instant now = Instant.now();
-        InventoryHoldEntity hold = new InventoryHoldEntity(UUID.randomUUID(), command.reservationId(), command.orderId(), InventoryHoldStatus.HELD, now);
-        for (ReservationItemMessage item : items) {
-            inventoryBySku.get(item.sku()).reserve(item.quantity());
-            hold.addItem(new InventoryHoldItemEntity(UUID.randomUUID(), item.sku(), item.quantity(), now));
+        for (InventoryHoldItemEntity item : hold.getItems()) {
+            inventoryBySku.get(item.getSku()).reserve(item.getQuantity());
         }
         inventoryHoldRepository.save(hold);
         saveReservedEvent(command, hold);
         inboxMessageRepository.save(new InboxMessageEntity(command.messageId(), ReserveInventoryCommand.class.getSimpleName()));
     }
 
+    /**
+     * Consumes previously held stock after the reservation is confirmed.
+     */
     @Transactional
     public void confirm(ConfirmInventoryCommand command) {
         if (alreadyProcessed(command.messageId())) {
             return;
         }
+
+        // Lock the hold first so confirm and release cannot win the same reservation concurrently.
         InventoryHoldEntity hold = inventoryHoldRepository.findWithLockByReservationId(command.reservationId())
                 .orElseThrow(() -> new ConflictException(ErrorCode.CONFLICT, "Inventory hold not found.", Map.of("reservationId", command.reservationId())));
 
+        // Replaying a completed command publishes the same outcome without changing stock twice.
         if (hold.getStatus() == InventoryHoldStatus.CONFIRMED) {
             saveConfirmedEvent(command);
             inboxMessageRepository.save(new InboxMessageEntity(command.messageId(), ConfirmInventoryCommand.class.getSimpleName()));
             return;
         }
+
         if (hold.getStatus() == InventoryHoldStatus.RELEASED) {
             inboxMessageRepository.save(new InboxMessageEntity(command.messageId(), ConfirmInventoryCommand.class.getSimpleName()));
             return;
@@ -158,19 +185,26 @@ public class InventoryApplicationService {
         inboxMessageRepository.save(new InboxMessageEntity(command.messageId(), ConfirmInventoryCommand.class.getSimpleName()));
     }
 
+    /**
+     * Returns held stock to availability after the reservation is cancelled.
+     */
     @Transactional
     public void release(ReleaseInventoryCommand command) {
         if (alreadyProcessed(command.messageId())) {
             return;
         }
+
+        // Lock the hold first so confirm and release cannot win the same reservation concurrently.
         InventoryHoldEntity hold = inventoryHoldRepository.findWithLockByReservationId(command.reservationId())
                 .orElseThrow(() -> new ConflictException(ErrorCode.CONFLICT, "Inventory hold not found.", Map.of("reservationId", command.reservationId())));
 
+        // Replaying a completed command publishes the same outcome without changing stock twice.
         if (hold.getStatus() == InventoryHoldStatus.RELEASED) {
             saveReleasedEvent(command);
             inboxMessageRepository.save(new InboxMessageEntity(command.messageId(), ReleaseInventoryCommand.class.getSimpleName()));
             return;
         }
+
         if (hold.getStatus() == InventoryHoldStatus.CONFIRMED) {
             inboxMessageRepository.save(new InboxMessageEntity(command.messageId(), ReleaseInventoryCommand.class.getSimpleName()));
             return;
@@ -209,6 +243,9 @@ public class InventoryApplicationService {
         saveOutbox(command.reservationId(), InventoryReleasedEvent.class.getSimpleName(), event);
     }
 
+    /**
+     * Stores an integration event for the scheduled publisher to send after transaction commit.
+     */
     private void saveOutbox(UUID aggregateId, String eventType, Object payload) {
         try {
             outboxEventRepository.save(new OutboxEventEntity(aggregateId, eventType, objectMapper.writeValueAsString(payload)));
@@ -217,23 +254,26 @@ public class InventoryApplicationService {
         }
     }
 
+    /**
+     * Locks hold SKUs in sorted order to reduce deadlock risk across concurrent transactions.
+     */
     private Map<String, InventoryEntity> lockInventoryForHold(InventoryHoldEntity hold) {
         List<String> skus = hold.getItems().stream().map(InventoryHoldItemEntity::getSku).sorted().toList();
         return inventoryRepository.findAllBySkuInForUpdate(skus).stream()
                 .collect(Collectors.toMap(InventoryEntity::getSku, Function.identity()));
     }
 
-    private List<ReservationItemMessage> mergeItems(List<ReservationItemMessage> items) {
-        Map<String, Integer> merged = new LinkedHashMap<>();
-        items.stream()
-                .sorted(Comparator.comparing(ReservationItemMessage::sku))
-                .forEach(item -> merged.merge(item.sku(), item.quantity(), Integer::sum));
-        return merged.entrySet().stream()
-                .map(entry -> new ReservationItemMessage(entry.getKey(), entry.getValue()))
-                .toList();
-    }
-
     private boolean alreadyProcessed(UUID messageId) {
         return inboxMessageRepository.existsById(messageId);
+    }
+
+    private InventoryResponse toResponse(InventoryEntity inventory) {
+        return new InventoryResponse(
+                inventory.getSku(),
+                inventory.getOnHandStock(),
+                inventory.getAvailableStock(),
+                inventory.getReservedStock(),
+                inventory.getUpdatedAt()
+        );
     }
 }

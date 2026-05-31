@@ -3,6 +3,8 @@ package com.example.reservation.api;
 import com.example.reservation.api.dto.CreateReservationRequest;
 import com.example.reservation.api.dto.ReservationResponse;
 import com.example.reservation.application.ReservationApplicationService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -17,6 +19,7 @@ import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1/reservations")
+@Tag(name = "Reservations", description = "Create, read, confirm, and cancel reservations")
 public class ReservationController {
     private final ReservationApplicationService reservationApplicationService;
 
@@ -25,21 +28,25 @@ public class ReservationController {
     }
 
     @PostMapping
+    @Operation(summary = "Create a reservation", description = "Creates a reservation in RESERVING status and starts the async inventory hold flow.")
     ResponseEntity<ReservationResponse> create(@Valid @RequestBody CreateReservationRequest request) {
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(reservationApplicationService.create(request));
     }
 
     @GetMapping("/{id}")
+    @Operation(summary = "Get a reservation")
     ReservationResponse get(@PathVariable UUID id) {
         return reservationApplicationService.get(id);
     }
 
     @PostMapping("/{id}/confirm")
+    @Operation(summary = "Confirm a pending reservation", description = "Moves PENDING to CONFIRMING and starts the async inventory confirm flow.")
     ResponseEntity<ReservationResponse> confirm(@PathVariable UUID id) {
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(reservationApplicationService.confirm(id));
     }
 
     @PostMapping("/{id}/cancel")
+    @Operation(summary = "Cancel a pending reservation", description = "Moves PENDING to CANCELLING and starts the async inventory release flow.")
     ResponseEntity<ReservationResponse> cancel(@PathVariable UUID id) {
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(reservationApplicationService.cancel(id));
     }

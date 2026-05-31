@@ -1,5 +1,8 @@
 package com.example.common.api;
 
+/**
+ * Machine-readable API error codes shared by Reservation and Inventory services.
+ */
 public enum ErrorCode {
     VALIDATION_ERROR,
     RESERVATION_NOT_FOUND,

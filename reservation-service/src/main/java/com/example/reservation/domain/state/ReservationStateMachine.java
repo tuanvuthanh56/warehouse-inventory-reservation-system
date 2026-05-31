@@ -6,7 +6,14 @@ import com.example.reservation.domain.model.ReservationStatus;
 import java.util.Map;
 import java.util.Set;
 
+/**
+ * Defines the allowed reservation status transitions for the async inventory workflow.
+ */
 public class ReservationStateMachine {
+
+    /**
+     * Terminal states intentionally have no outgoing transitions.
+     */
     private static final Map<ReservationStatus, Set<ReservationStatus>> ALLOWED_TRANSITIONS = Map.of(
             ReservationStatus.RESERVING, Set.of(ReservationStatus.PENDING, ReservationStatus.REJECTED, ReservationStatus.FAILED_RETRYABLE),
             ReservationStatus.PENDING, Set.of(ReservationStatus.CONFIRMING, ReservationStatus.CANCELLING),
@@ -19,9 +26,13 @@ public class ReservationStateMachine {
     );
 
     public void assertCanTransition(ReservationStatus current, ReservationStatus next) {
-        if (!ALLOWED_TRANSITIONS.getOrDefault(current, Set.of()).contains(next)) {
+        if (!canTransition(current, next)) {
             throw new ReservationDomainException("Invalid reservation transition from " + current + " to " + next + ".");
         }
+    }
+
+    public boolean canTransition(ReservationStatus current, ReservationStatus next) {
+        return ALLOWED_TRANSITIONS.getOrDefault(current, Set.of()).contains(next);
     }
 
     public ReservationStatus confirm(ReservationStatus current) {

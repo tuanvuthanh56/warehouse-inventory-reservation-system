@@ -10,6 +10,7 @@ import java.time.Instant;
 @Entity
 @Table(name = "products")
 public class ProductEntity {
+
     @Id
     private String sku;
 

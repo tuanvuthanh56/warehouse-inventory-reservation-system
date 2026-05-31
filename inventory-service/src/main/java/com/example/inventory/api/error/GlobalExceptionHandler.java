@@ -2,6 +2,7 @@ package com.example.inventory.api.error;
 
 import com.example.common.api.ApiErrorResponse;
 import com.example.common.api.ErrorCode;
+import com.example.inventory.domain.exception.InventoryDomainException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -13,8 +14,12 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+/**
+ * Converts inventory-side exceptions into the shared API error response format.
+ */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
     @ExceptionHandler(ApiException.class)
     ResponseEntity<ApiErrorResponse> handleApiException(ApiException ex, HttpServletRequest request) {
         return ResponseEntity.status(ex.status())
@@ -31,6 +36,17 @@ public class GlobalExceptionHandler {
                 ErrorCode.VALIDATION_ERROR,
                 "Request validation failed.",
                 details,
+                traceId(request)
+        );
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+    }
+
+    @ExceptionHandler(InventoryDomainException.class)
+    ResponseEntity<ApiErrorResponse> handleDomainException(InventoryDomainException ex, HttpServletRequest request) {
+        ApiErrorResponse response = ApiErrorResponse.of(
+                ErrorCode.VALIDATION_ERROR,
+                ex.getMessage(),
+                Map.of(),
                 traceId(request)
         );
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);

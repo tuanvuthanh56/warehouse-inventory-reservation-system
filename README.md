@@ -1,22 +1,45 @@
 # Warehouse Inventory Reservation System
 
-Microservices implementation of the Warehouse Inventory Reservation take-home assignment.
+Microservices-based warehouse inventory reservation system built with Spring Boot.
 
-The system has two Spring Boot services:
+The system is split into two services:
 
-- `reservation-service`: public reservation API and saga orchestrator.
-- `inventory-service`: stock owner, inventory holds, and concurrency-safe stock updates.
+- `reservation-service`: exposes reservation APIs and orchestrates the reservation saga.
+- `inventory-service`: owns product stock, inventory holds, and concurrency-safe stock updates.
+
+Cross-service consistency is handled with Saga + Outbox + Inbox. Each service owns its own PostgreSQL database; there is no distributed transaction.
 
 ## Tech Stack
 
 - Java 17
 - Spring Boot 3
 - Spring Web, Validation, Data JPA, AMQP, Actuator
+- OpenAPI / Swagger UI
 - PostgreSQL per service
-- RabbitMQ for async commands/events
+- RabbitMQ for async commands and events
 - Flyway migrations
 - JUnit 5, AssertJ, Mockito
 - Docker Compose
+
+## Project Structure
+
+```text
+.
+|-- common/                    # Shared API error model and RabbitMQ message contracts
+|-- reservation-service/       # Reservation API, saga orchestration, reservation persistence
+|-- inventory-service/         # Inventory API, stock operations, hold persistence
+|-- docker-compose.yml         # Local infrastructure and full-stack runtime
+`-- pom.xml                    # Root Maven multi-module build
+```
+
+Each service follows the same package structure:
+
+```text
+api/             # REST controllers, DTOs, and API error handling
+application/     # Use cases and orchestration logic
+domain/          # Domain models, factories, state transitions, domain exceptions
+infrastructure/  # Persistence, messaging, configuration, OpenAPI setup
+```
 
 ## Architecture
 
@@ -41,21 +64,13 @@ RabbitMQ
 Reservation Service
 ```
 
-Each service owns its own database. There is no distributed transaction. Cross-service workflow is handled with Saga + Outbox + Inbox.
+Main patterns used:
 
-## Scaling Notes
-
-Both services can run multiple instances behind a load balancer. Inventory correctness is protected by PostgreSQL row locks, so concurrent reservations for the same SKU are serialized by the database.
-
-Outbox publishers use `FOR UPDATE SKIP LOCKED`, which lets multiple service instances publish different outbox rows without picking the same event. RabbitMQ listeners use retry with exponential backoff and dead-letter queues, so repeatedly failing messages are moved aside instead of blocking normal traffic.
-
-## Design Patterns
-
-- State Pattern: `reservation-service/src/main/java/com/example/reservation/domain/state/ReservationStateMachine.java` controls valid lifecycle transitions.
-- Factory Pattern: `reservation-service/src/main/java/com/example/reservation/domain/factory/ReservationFactory.java` validates and creates reservations with merged duplicate SKUs.
-- Saga Pattern: `ReservationApplicationService` creates reservation lifecycle commands and reacts to inventory events.
-- Outbox Pattern: both services persist messages to `outbox_events`; scheduled publishers deliver them to RabbitMQ.
-- Inbox Pattern: both services store processed `messageId` values in `inbox_messages` to avoid duplicate side effects.
+- State Pattern: `ReservationStateMachine` controls valid reservation lifecycle transitions.
+- Factory Pattern: `ReservationFactory` and `InventoryHoldFactory` validate and create domain objects.
+- Saga Pattern: `ReservationApplicationService` coordinates the reservation workflow through inventory commands and events.
+- Outbox Pattern: both services persist outgoing messages before publishing them to RabbitMQ.
+- Inbox Pattern: both services store processed message IDs to avoid duplicate side effects.
 
 ## Local Run
 
@@ -72,16 +87,59 @@ mvn clean test
 mvn package
 ```
 
-Run the full stack:
+### Option A: Full Stack With Docker Compose
 
 ```bash
 docker compose up --build
 ```
 
-Service URLs:
+### Option B: Infrastructure in Docker, Services With Maven
+
+Use this mode when editing Java code. Docker runs PostgreSQL and RabbitMQ; Maven runs the two Spring Boot services from source.
+
+Start infrastructure:
+
+```bash
+docker compose up -d reservation-db inventory-db rabbitmq
+```
+
+Install the shared `common` module once from the repository root:
+
+```bash
+mvn -am -pl common install -DskipTests
+```
+
+Run Inventory Service:
+
+```bash
+mvn -f inventory-service/pom.xml spring-boot:run
+```
+
+Run Reservation Service in another terminal:
+
+```bash
+mvn -f reservation-service/pom.xml spring-boot:run
+```
+
+Local `.env` values are loaded automatically by Spring Boot. Use these files when custom local values are needed:
+
+- `reservation-service/.env`
+- `inventory-service/.env`
+
+The committed `.env.example` files document the expected variables.
+
+When `common` changes, reinstall it and restart both services:
+
+```bash
+mvn -am -pl common install -DskipTests
+```
+
+## Service URLs
 
 - Reservation Service: `http://localhost:8081`
 - Inventory Service: `http://localhost:8082`
+- Reservation Swagger UI: `http://localhost:8081/swagger-ui/index.html`
+- Inventory Swagger UI: `http://localhost:8082/swagger-ui/index.html`
 - RabbitMQ UI: `http://localhost:15672` with `app` / `app`
 
 Health checks:
@@ -91,44 +149,7 @@ curl http://localhost:8081/actuator/health
 curl http://localhost:8082/actuator/health
 ```
 
-## API Examples
-
-Create reservation:
-
-```bash
-curl -i -X POST http://localhost:8081/api/v1/reservations \
-  -H "Content-Type: application/json" \
-  -d "{\"orderId\":\"ORD-1001\",\"items\":[{\"sku\":\"A100\",\"quantity\":5},{\"sku\":\"B200\",\"quantity\":3}]}"
-```
-
-The initial response is `202 Accepted` with status `RESERVING`. Poll the reservation until it becomes `PENDING` or `REJECTED`:
-
-```bash
-curl http://localhost:8081/api/v1/reservations/{reservationId}
-```
-
-Confirm a pending reservation:
-
-```bash
-curl -i -X POST http://localhost:8081/api/v1/reservations/{reservationId}/confirm
-```
-
-Cancel a pending reservation:
-
-```bash
-curl -i -X POST http://localhost:8081/api/v1/reservations/{reservationId}/cancel
-```
-
-Get stock:
-
-```bash
-curl http://localhost:8082/api/v1/inventory/A100
-```
-
-Seed stock:
-
-- `A100`: on hand 100, available 100, reserved 0
-- `B200`: on hand 50, available 50, reserved 0
+API request and response details are available through Swagger UI.
 
 ## Reservation Lifecycle
 
@@ -147,24 +168,22 @@ HELD -> CONFIRMED
 HELD -> RELEASED
 ```
 
-Reserve decreases `available_stock` and increases `reserved_stock`.
-Confirm decreases `reserved_stock` and `on_hand_stock`.
-Cancel/release increases `available_stock` and decreases `reserved_stock`.
+Inventory stock rules:
+
+- Reserve decreases `available_stock` and increases `reserved_stock`.
+- Confirm decreases `reserved_stock` and `on_hand_stock`.
+- Cancel/release increases `available_stock` and decreases `reserved_stock`.
+
+Seed stock:
+
+- `A100`: on hand 100, available 100, reserved 0
+- `B200`: on hand 50, available 50, reserved 0
 
 ## Concurrency Safety
 
 Inventory Service is the only stock owner. Reservation Service never changes stock directly.
 
-For reserve, Inventory Service locks all requested inventory rows in sorted SKU order:
-
-```sql
-SELECT i
-FROM InventoryEntity i
-WHERE i.sku IN (:skus)
-ORDER BY i.sku
-```
-
-The repository uses `PESSIMISTIC_WRITE`, so concurrent reservations for the same SKU serialize at the database row level. Multi-SKU reserve is handled in one transaction: if any SKU is missing or insufficient, no SKU is deducted.
+For reserve operations, Inventory Service locks requested inventory rows in sorted SKU order with a pessimistic write lock. Concurrent reservations for the same SKU are serialized at the database row level. Multi-SKU reserve is handled in one transaction: if any SKU is missing or insufficient, no SKU is deducted.
 
 ## Error Format
 
@@ -180,61 +199,56 @@ The repository uses `PESSIMISTIC_WRITE`, so concurrent reservations for the same
 }
 ```
 
-## Database Migrations
+## Database Structure
 
-Reservation Service migrations:
+Reservation Service database:
 
-- `reservations`
-- `reservation_items`
-- `outbox_events`
-- `inbox_messages`
+- `reservations`: reservation aggregate root with order ID, status, failure reason, and optimistic version.
+- `reservation_items`: SKUs and quantities attached to each reservation.
+- `outbox_events`: pending and published integration messages from Reservation Service.
+- `inbox_messages`: processed inventory event IDs for idempotency.
 
-Inventory Service migrations:
+Inventory Service database:
 
-- `products`
-- `inventory`
-- `inventory_holds`
-- `inventory_hold_items`
-- `outbox_events`
-- `inbox_messages`
+- `products`: product catalog keyed by SKU.
+- `inventory`: stock counters per SKU: `on_hand_stock`, `available_stock`, and `reserved_stock`.
+- `inventory_holds`: reservation-level hold records.
+- `inventory_hold_items`: SKUs and quantities held for a reservation.
+- `outbox_events`: pending and published integration messages from Inventory Service.
+- `inbox_messages`: processed reservation command IDs for idempotency.
+
+Flyway migration files live under:
+
+- `reservation-service/src/main/resources/db/migration`
+- `inventory-service/src/main/resources/db/migration`
 
 ## Tests
 
-Run:
+Run all automated tests:
 
 ```bash
 mvn test
 ```
 
-Current automated tests cover:
+Current tests cover:
 
-- Reservation Factory validation and duplicate SKU merging.
-- Reservation State Pattern transitions and invalid transition rejection.
-- Inventory stock reserve/confirm/release arithmetic.
-- Inventory application reserve success for multi-SKU.
-- Inventory application reserve rejection without partial deduction.
+- Reservation factory validation and duplicate SKU merging.
+- Inventory hold factory validation and duplicate SKU merging.
+- Reservation state transitions and invalid transition rejection.
+- Inventory stock reserve, confirm, and release arithmetic.
+- Inventory reserve success for multi-SKU requests.
+- Inventory reserve rejection without partial deduction.
+- REST controller behavior, global error handlers, messaging config, listeners, and outbox publishers.
 
-Docker-based E2E verification should be run with Docker Desktop enabled:
+Docker-based end-to-end verification:
 
-1. `docker compose up --build`
-2. Create reservation and poll until `PENDING`.
-3. Confirm or cancel and poll until terminal state.
+1. Run `docker compose up --build`.
+2. Create a reservation and poll until it becomes `PENDING`.
+3. Confirm or cancel the reservation and poll until terminal state.
 4. Check inventory stock after each flow.
 
-## Trade-Offs
+## Scalability and Reliability
 
-- The system uses eventual consistency between services, so creation returns `RESERVING` before inventory replies.
-- Outbox publisher is a simple scheduled publisher, appropriate for take-home scale.
-- JPA entities are used in the application layer to keep the implementation compact; domain rules remain isolated in factory/state-machine classes.
-- RabbitMQ is used instead of Kafka to keep local setup smaller.
+Both services can run multiple instances behind a load balancer. Inventory correctness is protected by PostgreSQL row locks, so concurrent reservations for the same SKU are serialized by the database.
 
-## Requirement Checklist
-
-- Clean architecture style packages: `api`, `application`, `domain`, `infrastructure`.
-- REST API implemented for create/get/confirm/cancel reservation and get stock.
-- Flyway migrations model all required tables.
-- State Pattern and Factory Pattern implemented and documented.
-- Saga, Outbox, and Inbox implemented for cross-service reliability.
-- Validation and global error handlers implemented in both services.
-- Inventory reserve is transaction-bound and uses pessimistic row locking.
-- Unit/application tests pass with `mvn test`.
+Outbox publishers use `FOR UPDATE SKIP LOCKED`, allowing multiple service instances to publish different outbox rows without claiming the same event. RabbitMQ listeners use retry with exponential backoff and dead-letter queues, so repeatedly failing messages are isolated instead of blocking normal traffic.

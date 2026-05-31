@@ -8,6 +8,9 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * Publishes stored inventory events to RabbitMQ after the business transaction commits.
+ */
 @Component
 public class InventoryOutboxPublisher {
     private final OutboxEventRepository outboxEventRepository;
@@ -21,7 +24,8 @@ public class InventoryOutboxPublisher {
     @Scheduled(fixedDelayString = "${app.outbox.publish-delay-ms:1000}")
     @Transactional
     public void publishPendingEvents() {
-        for (OutboxEventEntity event : outboxEventRepository.findTop20ByStatusOrderByCreatedAtAsc("NEW")) {
+        for (OutboxEventEntity event : outboxEventRepository.findBatchForPublishing("NEW", 20)) {
+            // Keep the serialized event type in a header so the listener can deserialize safely.
             rabbitTemplate.convertAndSend(
                     MessagingNames.INVENTORY_EXCHANGE,
                     MessagingNames.INVENTORY_EVENTS_QUEUE,
@@ -31,6 +35,7 @@ public class InventoryOutboxPublisher {
                         return message;
                     }
             );
+
             event.markPublished();
         }
     }

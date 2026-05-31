@@ -2,6 +2,8 @@ server:
   port: ${INVENTORY_SERVICE_PORT:8082}
 
 spring:
+  config:
+    import: optional:file:./inventory-service/.env[.properties],optional:file:./.env[.properties]
   application:
     name: inventory-service
   datasource:

@@ -13,6 +13,9 @@ import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.stereotype.Component;
 
+/**
+ * Dispatches inventory commands to application handlers based on the message type header.
+ */
 @Component
 public class InventoryCommandListener {
     private final InventoryApplicationService inventoryApplicationService;
@@ -28,8 +31,10 @@ public class InventoryCommandListener {
         try {
             if (ReserveInventoryCommand.class.getSimpleName().equals(eventType)) {
                 inventoryApplicationService.reserve(objectMapper.readValue(payload, ReserveInventoryCommand.class));
+
             } else if (ConfirmInventoryCommand.class.getSimpleName().equals(eventType)) {
                 inventoryApplicationService.confirm(objectMapper.readValue(payload, ConfirmInventoryCommand.class));
+
             } else if (ReleaseInventoryCommand.class.getSimpleName().equals(eventType)) {
                 inventoryApplicationService.release(objectMapper.readValue(payload, ReleaseInventoryCommand.class));
             }

@@ -19,6 +19,7 @@ import java.util.UUID;
 @Entity
 @Table(name = "reservations")
 public class ReservationEntity {
+
     @Id
     private UUID id;
 

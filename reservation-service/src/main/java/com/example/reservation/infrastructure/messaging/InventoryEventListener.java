@@ -14,6 +14,9 @@ import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.stereotype.Component;
 
+/**
+ * Dispatches inventory events to reservation application handlers based on the message type header.
+ */
 @Component
 public class InventoryEventListener {
     private final ReservationApplicationService reservationApplicationService;
@@ -29,10 +32,13 @@ public class InventoryEventListener {
         try {
             if (InventoryReservedEvent.class.getSimpleName().equals(eventType)) {
                 reservationApplicationService.handleInventoryReserved(objectMapper.readValue(payload, InventoryReservedEvent.class));
+
             } else if (InventoryReservationRejectedEvent.class.getSimpleName().equals(eventType)) {
                 reservationApplicationService.handleInventoryRejected(objectMapper.readValue(payload, InventoryReservationRejectedEvent.class));
+
             } else if (InventoryConfirmedEvent.class.getSimpleName().equals(eventType)) {
                 reservationApplicationService.handleInventoryConfirmed(objectMapper.readValue(payload, InventoryConfirmedEvent.class));
+
             } else if (InventoryReleasedEvent.class.getSimpleName().equals(eventType)) {
                 reservationApplicationService.handleInventoryReleased(objectMapper.readValue(payload, InventoryReleasedEvent.class));
             }

@@ -3,6 +3,8 @@ package com.example.reservation.domain.factory;
 import com.example.reservation.domain.exception.ReservationDomainException;
 import com.example.reservation.domain.model.ReservationItem;
 import com.example.reservation.domain.model.ReservationStatus;
+import com.example.reservation.domain.model.ReservationType;
+import com.example.reservation.domain.model.StandardReservation;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -15,12 +17,13 @@ class ReservationFactoryTest {
 
     @Test
     void createsReservingReservationAndMergesDuplicateSkus() {
-        var reservation = factory.create(" ORD-1001 ", List.of(
+        var reservation = factory.create(ReservationType.STANDARD, " ORD-1001 ", List.of(
                 new ReservationItem("A100", 2),
                 new ReservationItem("A100", 3),
                 new ReservationItem("B200", 1)
         ));
 
+        assertThat(reservation).isInstanceOf(StandardReservation.class);
         assertThat(reservation.orderId()).isEqualTo("ORD-1001");
         assertThat(reservation.status()).isEqualTo(ReservationStatus.RESERVING);
         assertThat(reservation.items()).containsExactly(
@@ -33,9 +36,19 @@ class ReservationFactoryTest {
     void rejectsInvalidReservation() {
         assertThatThrownBy(() -> factory.create("", List.of(new ReservationItem("A100", 1))))
                 .isInstanceOf(ReservationDomainException.class);
+        assertThatThrownBy(() -> factory.create(null, List.of(new ReservationItem("A100", 1))))
+                .isInstanceOf(ReservationDomainException.class);
+        assertThatThrownBy(() -> factory.create("ORD-1", null))
+                .isInstanceOf(ReservationDomainException.class);
         assertThatThrownBy(() -> factory.create("ORD-1", List.of()))
                 .isInstanceOf(ReservationDomainException.class);
+        assertThatThrownBy(() -> factory.create("ORD-1", List.of(new ReservationItem(" ", 1))))
+                .isInstanceOf(ReservationDomainException.class);
+        assertThatThrownBy(() -> factory.create("ORD-1", List.of(new ReservationItem(null, 1))))
+                .isInstanceOf(ReservationDomainException.class);
         assertThatThrownBy(() -> factory.create("ORD-1", List.of(new ReservationItem("A100", 0))))
+                .isInstanceOf(ReservationDomainException.class);
+        assertThatThrownBy(() -> factory.create(null, "ORD-1", List.of(new ReservationItem("A100", 1))))
                 .isInstanceOf(ReservationDomainException.class);
     }
 }

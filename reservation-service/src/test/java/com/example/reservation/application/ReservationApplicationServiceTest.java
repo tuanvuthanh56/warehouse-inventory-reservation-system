@@ -11,6 +11,7 @@ import com.example.reservation.api.dto.ReservationItemRequest;
 import com.example.reservation.api.error.ApiException;
 import com.example.reservation.api.error.ConflictException;
 import com.example.reservation.api.error.NotFoundException;
+import com.example.reservation.domain.exception.ReservationDomainException;
 import com.example.reservation.domain.factory.ReservationFactory;
 import com.example.reservation.domain.model.ReservationStatus;
 import com.example.reservation.domain.state.ReservationStateMachine;
@@ -97,11 +98,11 @@ class ReservationApplicationServiceTest {
     }
 
     @Test
-    void createWrapsDomainValidationErrorsAsBadRequestApiException() {
+    void createPropagatesDomainValidationErrors() {
         when(reservationRepository.findByOrderId("")).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.create(createRequest("", new ReservationItemRequest("A100", 1))))
-                .isInstanceOf(ApiException.class)
+                .isInstanceOf(ReservationDomainException.class)
                 .hasMessageContaining("orderId is required");
     }
 

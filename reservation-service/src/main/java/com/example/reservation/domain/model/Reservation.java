@@ -4,13 +4,24 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
-public record Reservation(
-        UUID id,
-        String orderId,
-        ReservationStatus status,
-        String failureReason,
-        List<ReservationItem> items,
-        Instant createdAt,
-        Instant updatedAt
-) {
+/*
+ * Abstraction for reservation domain objects.
+ *
+ * The factory returns this interface so application code depends on the
+ * reservation contract, not a concrete reservation implementation.
+ */
+public interface Reservation {
+    UUID id();
+
+    String orderId();
+
+    ReservationStatus status();
+
+    String failureReason();
+
+    List<ReservationItem> items();
+
+    Instant createdAt();
+
+    Instant updatedAt();
 }

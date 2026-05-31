@@ -11,6 +11,7 @@ import java.time.Instant;
 @Entity
 @Table(name = "inventory")
 public class InventoryEntity {
+
     @Id
     private String sku;
 
@@ -40,18 +41,27 @@ public class InventoryEntity {
         this.updatedAt = updatedAt;
     }
 
+    /**
+     * Moves quantity from available stock into reserved stock.
+     */
     public void reserve(int quantity) {
         availableStock -= quantity;
         reservedStock += quantity;
         updatedAt = Instant.now();
     }
 
+    /**
+     * Consumes quantity that was already reserved.
+     */
     public void confirm(int quantity) {
         reservedStock -= quantity;
         onHandStock -= quantity;
         updatedAt = Instant.now();
     }
 
+    /**
+     * Returns reserved quantity back to available stock.
+     */
     public void release(int quantity) {
         availableStock += quantity;
         reservedStock -= quantity;

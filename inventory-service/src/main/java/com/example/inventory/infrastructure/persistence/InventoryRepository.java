@@ -10,6 +10,11 @@ import java.util.Collection;
 import java.util.List;
 
 public interface InventoryRepository extends JpaRepository<InventoryEntity, String> {
+    List<InventoryEntity> findAllByOrderBySkuAsc();
+
+    /**
+     * Locks SKU rows in deterministic order before stock mutation.
+     */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select i from InventoryEntity i where i.sku in :skus order by i.sku")
     List<InventoryEntity> findAllBySkuInForUpdate(@Param("skus") Collection<String> skus);

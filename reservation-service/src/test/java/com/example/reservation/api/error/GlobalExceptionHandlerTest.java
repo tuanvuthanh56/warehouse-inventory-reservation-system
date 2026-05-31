@@ -1,6 +1,7 @@
 package com.example.reservation.api.error;
 
 import com.example.common.api.ErrorCode;
+import com.example.reservation.domain.exception.ReservationDomainException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
@@ -45,6 +46,16 @@ class GlobalExceptionHandlerTest {
         assertThat(response.getBody().code()).isEqualTo("VALIDATION_ERROR");
         assertThat(response.getBody().details()).containsEntry("orderId", "must not be blank");
         assertThat(response.getBody().traceId()).isEqualTo("req-1");
+    }
+
+    @Test
+    void handleDomainExceptionReturnsValidationError() {
+        var response = handler.handleDomainException(new ReservationDomainException("orderId is required."), request(null, "req-domain"));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody().code()).isEqualTo("VALIDATION_ERROR");
+        assertThat(response.getBody().message()).isEqualTo("orderId is required.");
+        assertThat(response.getBody().traceId()).isEqualTo("req-domain");
     }
 
     @Test

@@ -57,11 +57,13 @@ public class InventoryHoldEntity {
         items.add(item);
     }
 
+    // HELD -> CONFIRMED.
     public void markConfirmed() {
         this.status = InventoryHoldStatus.CONFIRMED;
         this.updatedAt = Instant.now();
     }
 
+    // HELD -> RELEASED.
     public void markReleased() {
         this.status = InventoryHoldStatus.RELEASED;
         this.updatedAt = Instant.now();

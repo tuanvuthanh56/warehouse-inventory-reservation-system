@@ -5,7 +5,7 @@ Microservices-based warehouse inventory reservation system built with Spring Boo
 The system is split into two services:
 
 - `reservation-service`: exposes reservation APIs and orchestrates the reservation saga.
-- `inventory-service`: owns product stock, inventory holds, and concurrency-safe stock updates.
+- `inventory-service`: owns SKU stock, inventory holds, and concurrency-safe stock updates.
 
 Cross-service consistency is handled with Saga + Outbox + Inbox. Each service owns its own PostgreSQL database; there is no distributed transaction.
 
@@ -55,7 +55,7 @@ RabbitMQ
   |
   v
 Inventory Service
-  | DB: products, inventory, inventory_holds, inventory_hold_items, outbox_events, inbox_messages
+  | DB: inventory, inventory_holds, inventory_hold_items, outbox_events, inbox_messages
   | publishes InventoryReserved/Rejected/Confirmed/ReleasedEvent
   v
 RabbitMQ
@@ -187,6 +187,8 @@ For reserve operations, Inventory Service locks requested inventory rows in sort
 
 ## Error Format
 
+Both services use a global exception handler to return a consistent JSON error response for validation errors, domain conflicts, missing resources, and unexpected failures. Each response includes an application error code, a readable message, optional details, a trace ID, and a timestamp.
+
 ```json
 {
   "code": "RESERVATION_NOT_PENDING",
@@ -210,7 +212,6 @@ Reservation Service database:
 
 Inventory Service database:
 
-- `products`: product catalog keyed by SKU.
 - `inventory`: stock counters per SKU: `on_hand_stock`, `available_stock`, and `reserved_stock`.
 - `inventory_holds`: reservation-level hold records.
 - `inventory_hold_items`: SKUs and quantities held for a reservation.
@@ -239,13 +240,6 @@ Current tests cover:
 - Inventory reserve success for multi-SKU requests.
 - Inventory reserve rejection without partial deduction.
 - REST controller behavior, global error handlers, messaging config, listeners, and outbox publishers.
-
-Docker-based end-to-end verification:
-
-1. Run `docker compose up --build`.
-2. Create a reservation and poll until it becomes `PENDING`.
-3. Confirm or cancel the reservation and poll until terminal state.
-4. Check inventory stock after each flow.
 
 ## Scalability and Reliability
 

@@ -182,6 +182,7 @@ class ReservationApplicationServiceTest {
         UUID reservationId = UUID.randomUUID();
         UUID messageId = UUID.randomUUID();
         var reservation = reservation(reservationId, "ORD-1", ReservationStatus.RESERVING);
+        reservation.addItem(new ReservationItemEntity(UUID.randomUUID(), "A100", 3, Instant.now()));
         when(inboxMessageRepository.existsById(messageId)).thenReturn(false);
         when(reservationRepository.findById(reservationId)).thenReturn(Optional.of(reservation));
 
@@ -203,6 +204,7 @@ class ReservationApplicationServiceTest {
         UUID reservationId = UUID.randomUUID();
         UUID messageId = UUID.randomUUID();
         var reservation = reservation(reservationId, "ORD-1", ReservationStatus.RESERVING);
+        reservation.addItem(new ReservationItemEntity(UUID.randomUUID(), "A100", 3, Instant.now()));
         when(inboxMessageRepository.existsById(messageId)).thenReturn(false);
         when(reservationRepository.findById(reservationId)).thenReturn(Optional.of(reservation));
 
@@ -211,12 +213,14 @@ class ReservationApplicationServiceTest {
                 reservationId,
                 "ORD-1",
                 "INSUFFICIENT_STOCK",
-                List.of(new UnavailableItemMessage("A100", 3, 1)),
+                List.of(new UnavailableItemMessage("A100", 3, 1, "INSUFFICIENT_STOCK")),
                 Instant.now()
         ));
 
         assertThat(reservation.getStatus()).isEqualTo(ReservationStatus.REJECTED);
         assertThat(reservation.getFailureReason()).isEqualTo("INSUFFICIENT_STOCK");
+        assertThat(reservation.getItems().get(0).getAvailableStock()).isEqualTo(1);
+        assertThat(reservation.getItems().get(0).getFailureReason()).isEqualTo("INSUFFICIENT_STOCK");
         verify(inboxMessageRepository).save(any());
     }
 
@@ -307,7 +311,7 @@ class ReservationApplicationServiceTest {
                 reservationId,
                 "ORD-1",
                 "INSUFFICIENT_STOCK",
-                List.of(new UnavailableItemMessage("A100", 3, 1)),
+                List.of(new UnavailableItemMessage("A100", 3, 1, "INSUFFICIENT_STOCK")),
                 Instant.now()
         ));
 

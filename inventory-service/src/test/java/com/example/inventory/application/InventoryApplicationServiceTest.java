@@ -159,7 +159,7 @@ class InventoryApplicationServiceTest {
     }
 
     @Test
-    void reserveRejectsAllItemsWithoutPartialDeductionWhenAnySkuIsInsufficient() {
+    void reserveRejectsAllItemsWithoutPartialDeductionWhenAnySkuIsInsufficient() throws Exception {
         UUID reservationId = UUID.randomUUID();
         InventoryEntity a100 = new InventoryEntity("A100", 100, 100, 0, Instant.now());
         InventoryEntity b200 = new InventoryEntity("B200", 50, 1, 0, Instant.now());
@@ -184,6 +184,40 @@ class InventoryApplicationServiceTest {
         ArgumentCaptor<OutboxEventEntity> outboxCaptor = ArgumentCaptor.forClass(OutboxEventEntity.class);
         verify(outboxEventRepository).save(outboxCaptor.capture());
         assertThat(outboxCaptor.getValue().getEventType()).isEqualTo("InventoryReservationRejectedEvent");
+        var event = objectMapper.readTree(outboxCaptor.getValue().getPayload());
+        assertThat(event.get("reason").asText()).isEqualTo("INSUFFICIENT_STOCK");
+        assertThat(event.get("unavailableItems").get(0).get("sku").asText()).isEqualTo("B200");
+        assertThat(event.get("unavailableItems").get(0).get("available").asInt()).isEqualTo(1);
+        assertThat(event.get("unavailableItems").get(0).get("reason").asText()).isEqualTo("INSUFFICIENT_STOCK");
+    }
+
+    @Test
+    void reserveRejectsUnknownSkuWithItemLevelReason() throws Exception {
+        UUID reservationId = UUID.randomUUID();
+        InventoryEntity a100 = new InventoryEntity("A100", 100, 100, 0, Instant.now());
+        when(inboxMessageRepository.existsById(any())).thenReturn(false);
+        when(inventoryHoldRepository.findByReservationId(reservationId)).thenReturn(Optional.empty());
+        when(inventoryRepository.findAllBySkuInForUpdate(anyCollection())).thenReturn(List.of(a100));
+
+        service.reserve(new ReserveInventoryCommand(
+                UUID.randomUUID(),
+                reservationId,
+                "ORD-UNKNOWN",
+                List.of(new ReservationItemMessage("A100", 10), new ReservationItemMessage("B500", 5)),
+                Instant.now()
+        ));
+
+        assertThat(a100.getAvailableStock()).isEqualTo(100);
+        assertThat(a100.getReservedStock()).isZero();
+        verify(inventoryHoldRepository, never()).save(any());
+
+        ArgumentCaptor<OutboxEventEntity> outboxCaptor = ArgumentCaptor.forClass(OutboxEventEntity.class);
+        verify(outboxEventRepository).save(outboxCaptor.capture());
+        var event = objectMapper.readTree(outboxCaptor.getValue().getPayload());
+        assertThat(event.get("reason").asText()).isEqualTo("SKU_NOT_FOUND");
+        assertThat(event.get("unavailableItems").get(0).get("sku").asText()).isEqualTo("B500");
+        assertThat(event.get("unavailableItems").get(0).get("available").asInt()).isZero();
+        assertThat(event.get("unavailableItems").get(0).get("reason").asText()).isEqualTo("SKU_NOT_FOUND");
     }
 
     @Test

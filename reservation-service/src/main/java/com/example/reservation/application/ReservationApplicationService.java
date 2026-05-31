@@ -9,6 +9,7 @@ import com.example.common.messaging.InventoryReservedEvent;
 import com.example.common.messaging.ReleaseInventoryCommand;
 import com.example.common.messaging.ReservationItemMessage;
 import com.example.common.messaging.ReserveInventoryCommand;
+import com.example.common.messaging.UnavailableItemMessage;
 import com.example.reservation.api.dto.CreateReservationRequest;
 import com.example.reservation.api.dto.ReservationItemResponse;
 import com.example.reservation.api.dto.ReservationResponse;
@@ -153,6 +154,7 @@ public class ReservationApplicationService {
         ReservationEntity reservation = findReservation(event.reservationId());
         if (reservation.getStatus() == ReservationStatus.RESERVING) {
             reservation.transitionTo(ReservationStatus.REJECTED, event.reason());
+            markUnavailableItems(reservation, event.unavailableItems());
         }
         inboxMessageRepository.save(new InboxMessageEntity(event.messageId(), InventoryReservationRejectedEvent.class.getSimpleName()));
     }
@@ -243,6 +245,17 @@ public class ReservationApplicationService {
         return inboxMessageRepository.existsById(messageId);
     }
 
+    private void markUnavailableItems(ReservationEntity reservation, List<UnavailableItemMessage> unavailableItems) {
+        for (UnavailableItemMessage unavailableItem : unavailableItems) {
+            for (ReservationItemEntity item : reservation.getItems()) {
+                if (item.getSku().equals(unavailableItem.sku())) {
+                    item.markUnavailable(unavailableItem.available(), unavailableItem.reason());
+                    break;
+                }
+            }
+        }
+    }
+
     private ConflictException notPending(UUID reservationId, ReservationStatus currentStatus, String message) {
         return new ConflictException(
                 ErrorCode.RESERVATION_NOT_PENDING,
@@ -264,7 +277,12 @@ public class ReservationApplicationService {
 
     private ReservationResponse toResponse(ReservationEntity entity) {
         List<ReservationItemResponse> items = entity.getItems().stream()
-                .map(item -> new ReservationItemResponse(item.getSku(), item.getQuantity()))
+                .map(item -> new ReservationItemResponse(
+                        item.getSku(),
+                        item.getQuantity(),
+                        item.getAvailableStock(),
+                        item.getFailureReason()
+                ))
                 .toList();
         return new ReservationResponse(
                 entity.getId(),

@@ -39,7 +39,7 @@ class InventoryEventListenerTest {
     @Test
     void dispatchesInventoryRejectedEvent() throws Exception {
         var event = new InventoryReservationRejectedEvent(UUID.randomUUID(), UUID.randomUUID(), "ORD-1",
-                "INSUFFICIENT_STOCK", List.of(new UnavailableItemMessage("A100", 3, 1)), Instant.now());
+                "INSUFFICIENT_STOCK", List.of(new UnavailableItemMessage("A100", 3, 1, "INSUFFICIENT_STOCK")), Instant.now());
 
         listener.onMessage(objectMapper.writeValueAsString(event), InventoryReservationRejectedEvent.class.getSimpleName());
 

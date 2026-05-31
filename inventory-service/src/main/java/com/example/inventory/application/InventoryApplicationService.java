@@ -44,6 +44,11 @@ import java.util.stream.Collectors;
  */
 @Service
 public class InventoryApplicationService {
+    private static final String INVENTORY_UNAVAILABLE = "INVENTORY_UNAVAILABLE";
+
+    private static final String INSUFFICIENT_STOCK = "INSUFFICIENT_STOCK";
+
+    private static final String SKU_NOT_FOUND = "SKU_NOT_FOUND";
 
     private final InventoryRepository inventoryRepository;
 
@@ -125,7 +130,8 @@ public class InventoryApplicationService {
             InventoryEntity inventory = inventoryBySku.get(item.getSku());
             int available = inventory == null ? 0 : inventory.getAvailableStock();
             if (inventory == null || available < item.getQuantity()) {
-                unavailableItems.add(new UnavailableItemMessage(item.getSku(), item.getQuantity(), available));
+                String reason = inventory == null ? SKU_NOT_FOUND : INSUFFICIENT_STOCK;
+                unavailableItems.add(new UnavailableItemMessage(item.getSku(), item.getQuantity(), available, reason));
             }
         }
 
@@ -134,7 +140,7 @@ public class InventoryApplicationService {
                     UUID.randomUUID(),
                     command.reservationId(),
                     command.orderId(),
-                    "INSUFFICIENT_STOCK",
+                    rejectionReason(unavailableItems),
                     unavailableItems,
                     Instant.now()
             );
@@ -149,6 +155,12 @@ public class InventoryApplicationService {
         inventoryHoldRepository.save(hold);
         saveReservedEvent(command, hold);
         inboxMessageRepository.save(new InboxMessageEntity(command.messageId(), ReserveInventoryCommand.class.getSimpleName()));
+    }
+
+    private String rejectionReason(List<UnavailableItemMessage> unavailableItems) {
+        String firstReason = unavailableItems.get(0).reason();
+        boolean sameReason = unavailableItems.stream().allMatch(item -> firstReason.equals(item.reason()));
+        return sameReason ? firstReason : INVENTORY_UNAVAILABLE;
     }
 
     /**

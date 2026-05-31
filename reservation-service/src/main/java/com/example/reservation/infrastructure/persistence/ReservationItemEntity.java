@@ -27,6 +27,12 @@ public class ReservationItemEntity {
     @Column(nullable = false)
     private int quantity;
 
+    @Column(name = "available_stock")
+    private Integer availableStock;
+
+    @Column(name = "failure_reason")
+    private String failureReason;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -50,5 +56,18 @@ public class ReservationItemEntity {
 
     public int getQuantity() {
         return quantity;
+    }
+
+    public Integer getAvailableStock() {
+        return availableStock;
+    }
+
+    public String getFailureReason() {
+        return failureReason;
+    }
+
+    public void markUnavailable(int availableStock, String failureReason) {
+        this.availableStock = availableStock;
+        this.failureReason = failureReason;
     }
 }

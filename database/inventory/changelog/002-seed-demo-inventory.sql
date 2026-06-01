@@ -1,3 +1,6 @@
+--liquibase formatted sql
+
+--changeset warehouse:inventory-002-seed-demo-inventory
 INSERT INTO products (sku, name, description, created_at, updated_at)
 VALUES
     ('A100', 'Demo Product A100', 'Seed product for reservation examples.', NOW(), NOW()),

@@ -1,5 +1,6 @@
 package com.example.inventory.api;
 
+import com.example.common.api.ApiResponse;
 import com.example.inventory.api.dto.InventoryResponse;
 import com.example.inventory.application.InventoryApplicationService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -23,13 +24,13 @@ public class InventoryController {
 
     @GetMapping
     @Operation(summary = "List current stock for all SKUs")
-    List<InventoryResponse> listStock() {
-        return inventoryApplicationService.listStock();
+    ApiResponse<List<InventoryResponse>> listStock() {
+        return ApiResponse.success(inventoryApplicationService.listStock());
     }
 
     @GetMapping("/{sku}")
     @Operation(summary = "Get current stock for a SKU")
-    InventoryResponse getStock(@PathVariable String sku) {
-        return inventoryApplicationService.getStock(sku);
+    ApiResponse<InventoryResponse> getStock(@PathVariable String sku) {
+        return ApiResponse.success(inventoryApplicationService.getStock(sku));
     }
 }

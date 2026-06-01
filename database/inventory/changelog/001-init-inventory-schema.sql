@@ -1,3 +1,6 @@
+--liquibase formatted sql
+
+--changeset warehouse:inventory-001-init-schema
 CREATE TABLE products (
     sku VARCHAR(100) PRIMARY KEY,
     name VARCHAR(200) NOT NULL,

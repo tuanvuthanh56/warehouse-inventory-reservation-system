@@ -2,6 +2,8 @@
 
 Microservices-based warehouse inventory reservation system built with Spring Boot.
 
+This repository implements **Challenge 1: Warehouse Inventory Reservation System**. I chose this challenge because stock reservation is concurrency-sensitive by nature, so it is a good fit for demonstrating database locking, state transitions, idempotent messaging, and service boundaries.
+
 The system is split into two services:
 
 - `reservation-service`: exposes reservation APIs and orchestrates the reservation saga.
@@ -17,7 +19,7 @@ Cross-service consistency is handled with Saga + Outbox + Inbox. Each service ow
 - OpenAPI / Swagger UI
 - PostgreSQL per service
 - RabbitMQ for async commands and events
-- Flyway migrations
+- Liquibase migrations
 - JUnit 5, AssertJ, Mockito
 - Docker Compose
 
@@ -26,6 +28,7 @@ Cross-service consistency is handled with Saga + Outbox + Inbox. Each service ow
 ```text
 .
 |-- common/                    # Shared API error model and RabbitMQ message contracts
+|-- database/                  # Liquibase changelogs and migration image
 |-- reservation-service/       # Reservation API, saga orchestration, reservation persistence
 |-- inventory-service/         # Inventory API, stock operations, hold persistence
 |-- docker-compose.yml         # Local infrastructure and full-stack runtime
@@ -64,13 +67,25 @@ RabbitMQ
 Reservation Service
 ```
 
-Main patterns used:
+## Design Patterns
+
+Patterns used and where they appear:
 
 - State Pattern: `ReservationStateMachine` controls valid reservation lifecycle transitions.
 - Factory Pattern: `ReservationFactory` and `InventoryHoldFactory` validate and create domain objects.
 - Saga Pattern: `ReservationApplicationService` coordinates the reservation workflow through inventory commands and events.
 - Outbox Pattern: both services persist outgoing messages before publishing them to RabbitMQ.
 - Inbox Pattern: both services store processed message IDs to avoid duplicate side effects.
+
+`ReservationStateMachine` intentionally uses an explicit transition table instead of one concrete class per state. The async Saga introduces intermediate states such as `RESERVING`, `CONFIRMING`, and `CANCELLING`, so a finite state machine keeps transitions easier to audit and test while still centralizing lifecycle rules.
+
+## SOLID Principles
+
+- Single Responsibility: controllers only handle HTTP concerns, application services orchestrate use cases, domain factories validate creation rules, and infrastructure classes own persistence or messaging.
+- Open/Closed: reservation creation is routed through `ReservationType`, and lifecycle transitions can be extended in `ReservationStateMachine` without spreading transition checks across controllers.
+- Liskov Substitution: `StandardReservation` implements the `Reservation` domain interface and can be replaced by another reservation implementation with the same contract.
+- Interface Segregation: API DTOs, messaging contracts, repositories, and domain models are kept separate so callers depend only on the shape they need.
+- Dependency Inversion: application services receive repositories, publishers, and domain services through constructor injection rather than constructing infrastructure directly.
 
 ## Local Run
 
@@ -93,14 +108,25 @@ mvn package
 docker compose up --build
 ```
 
+Docker Compose starts PostgreSQL and RabbitMQ, runs the Liquibase migration jobs to completion,
+then starts the application services.
+
 ### Option B: Infrastructure in Docker, Services With Maven
 
-Use this mode when editing Java code. Docker runs PostgreSQL and RabbitMQ; Maven runs the two Spring Boot services from source.
+Use this mode when editing Java code. Docker runs PostgreSQL and RabbitMQ; Maven runs both
+Liquibase migrations and the two Spring Boot services from source.
 
 Start infrastructure:
 
 ```bash
 docker compose up -d reservation-db inventory-db rabbitmq
+```
+
+Run database migrations:
+
+```bash
+mvn -f database/pom.xml -P reservation liquibase:update
+mvn -f database/pom.xml -P inventory liquibase:update
 ```
 
 Install the shared `common` module once from the repository root:
@@ -185,21 +211,43 @@ Inventory Service is the only stock owner. Reservation Service never changes sto
 
 For reserve operations, Inventory Service locks requested inventory rows in sorted SKU order with a pessimistic write lock. Concurrent reservations for the same SKU are serialized at the database row level. Multi-SKU reserve is handled in one transaction: if any SKU is missing or insufficient, no SKU is deducted.
 
-## Error Format
+## Response Format
 
-Both services use a global exception handler to return a consistent JSON error response for validation errors, domain conflicts, missing resources, and unexpected failures. Each response includes an application error code, a readable message, optional details, a trace ID, and a timestamp.
+Every API response uses the required envelope with `data` and `error`.
+
+Success response:
 
 ```json
 {
-  "code": "RESERVATION_NOT_PENDING",
-  "message": "Only PENDING reservations can be confirmed.",
-  "details": {
-    "reservationId": "..."
+  "data": {
+    "id": "4d7e0d9f-2a85-4f41-9d94-7fbf0c6e7fd5",
+    "orderId": "ORD-1001",
+    "status": "PENDING"
   },
-  "traceId": "...",
-  "timestamp": "..."
+  "error": null
 }
 ```
+
+Error response:
+
+```json
+{
+  "data": null,
+  "error": {
+    "code": "INSUFFICIENT_STOCK",
+    "message": "SKU A100 has only 30 units available, 50 were requested",
+    "details": {
+      "sku": "A100",
+      "availableStock": 30,
+      "requestedQuantity": 50
+    },
+    "traceId": "...",
+    "timestamp": "..."
+  }
+}
+```
+
+Both services use a global exception handler for validation errors, domain conflicts, missing resources, and unexpected failures. `traceId` comes from `X-Trace-Id` when supplied, otherwise from the servlet request ID.
 
 ## Database Structure
 
@@ -218,10 +266,14 @@ Inventory Service database:
 - `outbox_events`: pending and published integration messages from Inventory Service.
 - `inbox_messages`: processed reservation command IDs for idempotency.
 
-Flyway migration files live under:
+Liquibase changelog files live under:
 
-- `reservation-service/src/main/resources/db/migration`
-- `inventory-service/src/main/resources/db/migration`
+- `database/reservation/changelog`
+- `database/inventory/changelog`
+
+Applications do not auto-run migrations on startup. The migration image is built from
+`database/Dockerfile` and is run as a separate job in Docker Compose. In production, the same
+image can be run as a CI/Kubernetes job before rolling out the services.
 
 ## Tests
 
@@ -246,3 +298,18 @@ Current tests cover:
 Both services can run multiple instances behind a load balancer. Inventory correctness is protected by PostgreSQL row locks, so concurrent reservations for the same SKU are serialized by the database.
 
 Outbox publishers use `FOR UPDATE SKIP LOCKED`, allowing multiple service instances to publish different outbox rows without claiming the same event. RabbitMQ listeners use retry with exponential backoff and dead-letter queues, so repeatedly failing messages are isolated instead of blocking normal traffic.
+
+What can break at larger scale:
+
+- A single hot SKU becomes limited by one PostgreSQL row lock. This is correct but can reduce throughput for flash-sale style traffic.
+- RabbitMQ backlog can grow if Inventory Service is slower than Reservation Service. Queue depth, DLQ count, and outbox age should be monitored.
+- The current API exposes two service URLs. A production deployment should add an API gateway or BFF so clients do not need to know internal service topology.
+- Outbox tables need retention or archival after successful publication to prevent unbounded growth.
+
+## Trade-offs and Future Improvements
+
+- The system uses Saga + Outbox + Inbox instead of a single synchronous transaction. This improves service autonomy and failure recovery, but reservation creation is eventually consistent and clients may briefly see `RESERVING`.
+- `POST /api/v1/reservations` returns `201 Created` once the reservation resource is persisted, while inventory confirmation still completes asynchronously through events.
+- The lifecycle uses a compact finite state machine rather than GoF State classes. This fits the async Saga flow better today; concrete state classes can be introduced later if each status gains richer behavior.
+- Add Testcontainers integration tests for the full Docker-like path, especially concurrent reservation requests against PostgreSQL.
+- Add an API gateway and client-facing aggregation endpoint for inventory and reservation reads.

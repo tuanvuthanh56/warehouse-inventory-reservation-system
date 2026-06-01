@@ -20,7 +20,10 @@ class InventoryControllerTest {
         var response = new InventoryResponse("A100", 100, 90, 10, Instant.now());
         when(service.getStock("A100")).thenReturn(response);
 
-        assertThat(controller.getStock("A100")).isEqualTo(response);
+        var entity = controller.getStock("A100");
+
+        assertThat(entity.data()).isEqualTo(response);
+        assertThat(entity.error()).isNull();
     }
 
     @Test
@@ -31,6 +34,9 @@ class InventoryControllerTest {
         );
         when(service.listStock()).thenReturn(responses);
 
-        assertThat(controller.listStock()).isEqualTo(responses);
+        var entity = controller.listStock();
+
+        assertThat(entity.data()).isEqualTo(responses);
+        assertThat(entity.error()).isNull();
     }
 }

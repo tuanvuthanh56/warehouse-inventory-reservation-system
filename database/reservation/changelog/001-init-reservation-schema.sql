@@ -1,3 +1,6 @@
+--liquibase formatted sql
+
+--changeset warehouse:reservation-001-init-schema
 CREATE TABLE reservations (
     id UUID PRIMARY KEY,
     order_id VARCHAR(100) NOT NULL UNIQUE,

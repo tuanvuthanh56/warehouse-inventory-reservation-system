@@ -1,3 +1,6 @@
+--liquibase formatted sql
+
+--changeset warehouse:inventory-003-remove-products-table
 ALTER TABLE inventory_hold_items
     DROP CONSTRAINT inventory_hold_items_sku_fkey;
 

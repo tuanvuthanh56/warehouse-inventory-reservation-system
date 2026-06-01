@@ -1,5 +1,6 @@
 package com.example.reservation.api.error;
 
+import com.example.common.api.ApiResponse;
 import com.example.common.api.ApiErrorResponse;
 import com.example.common.api.ErrorCode;
 import com.example.reservation.domain.exception.ReservationDomainException;
@@ -21,13 +22,13 @@ import java.util.Map;
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(ApiException.class)
-    ResponseEntity<ApiErrorResponse> handleApiException(ApiException ex, HttpServletRequest request) {
+    ResponseEntity<ApiResponse<Void>> handleApiException(ApiException ex, HttpServletRequest request) {
         return ResponseEntity.status(ex.status())
-                .body(ApiErrorResponse.of(ex.code(), ex.getMessage(), ex.details(), traceId(request)));
+                .body(ApiResponse.failure(ApiErrorResponse.of(ex.code(), ex.getMessage(), ex.details(), traceId(request))));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    ResponseEntity<ApiErrorResponse> handleValidation(MethodArgumentNotValidException ex, HttpServletRequest request) {
+    ResponseEntity<ApiResponse<Void>> handleValidation(MethodArgumentNotValidException ex, HttpServletRequest request) {
         Map<String, Object> details = new LinkedHashMap<>();
         for (FieldError fieldError : ex.getBindingResult().getFieldErrors()) {
             details.put(fieldError.getField(), fieldError.getDefaultMessage());
@@ -38,29 +39,29 @@ public class GlobalExceptionHandler {
                 details,
                 traceId(request)
         );
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.failure(response));
     }
 
     @ExceptionHandler(ReservationDomainException.class)
-    ResponseEntity<ApiErrorResponse> handleDomainException(ReservationDomainException ex, HttpServletRequest request) {
+    ResponseEntity<ApiResponse<Void>> handleDomainException(ReservationDomainException ex, HttpServletRequest request) {
         ApiErrorResponse response = ApiErrorResponse.of(
                 ErrorCode.VALIDATION_ERROR,
                 ex.getMessage(),
                 Map.of(),
                 traceId(request)
         );
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.failure(response));
     }
 
     @ExceptionHandler(Exception.class)
-    ResponseEntity<ApiErrorResponse> handleUnexpected(Exception ex, HttpServletRequest request) {
+    ResponseEntity<ApiResponse<Void>> handleUnexpected(Exception ex, HttpServletRequest request) {
         ApiErrorResponse response = ApiErrorResponse.of(
                 ErrorCode.INTERNAL_ERROR,
                 "Unexpected server error.",
                 Map.of(),
                 traceId(request)
         );
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(ApiResponse.failure(response));
     }
 
     private String traceId(HttpServletRequest request) {

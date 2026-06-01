@@ -28,8 +28,9 @@ class ReservationControllerTest {
 
         var entity = controller.create(request);
 
-        assertThat(entity.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
-        assertThat(entity.getBody()).isEqualTo(response);
+        assertThat(entity.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(entity.getBody().data()).isEqualTo(response);
+        assertThat(entity.getBody().error()).isNull();
     }
 
     @Test
@@ -38,7 +39,10 @@ class ReservationControllerTest {
         var response = response("PENDING");
         when(service.get(id)).thenReturn(response);
 
-        assertThat(controller.get(id)).isEqualTo(response);
+        var entity = controller.get(id);
+
+        assertThat(entity.data()).isEqualTo(response);
+        assertThat(entity.error()).isNull();
     }
 
     @Test
@@ -50,7 +54,8 @@ class ReservationControllerTest {
         var entity = controller.confirm(id);
 
         assertThat(entity.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
-        assertThat(entity.getBody()).isEqualTo(response);
+        assertThat(entity.getBody().data()).isEqualTo(response);
+        assertThat(entity.getBody().error()).isNull();
         verify(service).confirm(id);
     }
 
@@ -63,7 +68,8 @@ class ReservationControllerTest {
         var entity = controller.cancel(id);
 
         assertThat(entity.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
-        assertThat(entity.getBody()).isEqualTo(response);
+        assertThat(entity.getBody().data()).isEqualTo(response);
+        assertThat(entity.getBody().error()).isNull();
         verify(service).cancel(id);
     }
 

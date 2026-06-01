@@ -27,9 +27,10 @@ class GlobalExceptionHandlerTest {
         var response = handler.handleApiException(exception, request);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
-        assertThat(response.getBody().code()).isEqualTo("SKU_NOT_FOUND");
-        assertThat(response.getBody().details()).containsEntry("sku", "A100");
-        assertThat(response.getBody().traceId()).isEqualTo("trace-1");
+        assertThat(response.getBody().data()).isNull();
+        assertThat(response.getBody().error().code()).isEqualTo("SKU_NOT_FOUND");
+        assertThat(response.getBody().error().details()).containsEntry("sku", "A100");
+        assertThat(response.getBody().error().traceId()).isEqualTo("trace-1");
     }
 
     @Test
@@ -43,9 +44,10 @@ class GlobalExceptionHandlerTest {
         var response = handler.handleValidation(exception, request);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-        assertThat(response.getBody().code()).isEqualTo("VALIDATION_ERROR");
-        assertThat(response.getBody().details()).containsEntry("sku", "must not be blank");
-        assertThat(response.getBody().traceId()).isEqualTo("req-1");
+        assertThat(response.getBody().data()).isNull();
+        assertThat(response.getBody().error().code()).isEqualTo("VALIDATION_ERROR");
+        assertThat(response.getBody().error().details()).containsEntry("sku", "must not be blank");
+        assertThat(response.getBody().error().traceId()).isEqualTo("req-1");
     }
 
     @Test
@@ -53,9 +55,10 @@ class GlobalExceptionHandlerTest {
         var response = handler.handleDomainException(new InventoryDomainException("sku is required."), request(null, "req-domain"));
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-        assertThat(response.getBody().code()).isEqualTo("VALIDATION_ERROR");
-        assertThat(response.getBody().message()).isEqualTo("sku is required.");
-        assertThat(response.getBody().traceId()).isEqualTo("req-domain");
+        assertThat(response.getBody().data()).isNull();
+        assertThat(response.getBody().error().code()).isEqualTo("VALIDATION_ERROR");
+        assertThat(response.getBody().error().message()).isEqualTo("sku is required.");
+        assertThat(response.getBody().error().traceId()).isEqualTo("req-domain");
     }
 
     @Test
@@ -63,9 +66,10 @@ class GlobalExceptionHandlerTest {
         var response = handler.handleUnexpected(new RuntimeException("boom"), request(null, "req-2"));
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
-        assertThat(response.getBody().code()).isEqualTo("INTERNAL_ERROR");
-        assertThat(response.getBody().details()).isEmpty();
-        assertThat(response.getBody().traceId()).isEqualTo("req-2");
+        assertThat(response.getBody().data()).isNull();
+        assertThat(response.getBody().error().code()).isEqualTo("INTERNAL_ERROR");
+        assertThat(response.getBody().error().details()).isEmpty();
+        assertThat(response.getBody().error().traceId()).isEqualTo("req-2");
     }
 
     private HttpServletRequest request(String traceId, String requestId) {

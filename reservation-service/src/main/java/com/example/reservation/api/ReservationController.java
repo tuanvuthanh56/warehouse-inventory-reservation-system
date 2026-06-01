@@ -1,5 +1,6 @@
 package com.example.reservation.api;
 
+import com.example.common.api.ApiResponse;
 import com.example.reservation.api.dto.CreateReservationRequest;
 import com.example.reservation.api.dto.ReservationResponse;
 import com.example.reservation.application.ReservationApplicationService;
@@ -29,25 +30,25 @@ public class ReservationController {
 
     @PostMapping
     @Operation(summary = "Create a reservation", description = "Creates a reservation in RESERVING status and starts the async inventory hold flow.")
-    ResponseEntity<ReservationResponse> create(@Valid @RequestBody CreateReservationRequest request) {
-        return ResponseEntity.status(HttpStatus.ACCEPTED).body(reservationApplicationService.create(request));
+    ResponseEntity<ApiResponse<ReservationResponse>> create(@Valid @RequestBody CreateReservationRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(reservationApplicationService.create(request)));
     }
 
     @GetMapping("/{id}")
     @Operation(summary = "Get a reservation")
-    ReservationResponse get(@PathVariable UUID id) {
-        return reservationApplicationService.get(id);
+    ApiResponse<ReservationResponse> get(@PathVariable UUID id) {
+        return ApiResponse.success(reservationApplicationService.get(id));
     }
 
     @PostMapping("/{id}/confirm")
     @Operation(summary = "Confirm a pending reservation", description = "Moves PENDING to CONFIRMING and starts the async inventory confirm flow.")
-    ResponseEntity<ReservationResponse> confirm(@PathVariable UUID id) {
-        return ResponseEntity.status(HttpStatus.ACCEPTED).body(reservationApplicationService.confirm(id));
+    ResponseEntity<ApiResponse<ReservationResponse>> confirm(@PathVariable UUID id) {
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(ApiResponse.success(reservationApplicationService.confirm(id)));
     }
 
     @PostMapping("/{id}/cancel")
     @Operation(summary = "Cancel a pending reservation", description = "Moves PENDING to CANCELLING and starts the async inventory release flow.")
-    ResponseEntity<ReservationResponse> cancel(@PathVariable UUID id) {
-        return ResponseEntity.status(HttpStatus.ACCEPTED).body(reservationApplicationService.cancel(id));
+    ResponseEntity<ApiResponse<ReservationResponse>> cancel(@PathVariable UUID id) {
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(ApiResponse.success(reservationApplicationService.cancel(id)));
     }
 }

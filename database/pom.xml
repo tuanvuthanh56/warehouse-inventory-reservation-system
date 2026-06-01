@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.example</groupId>
+    <artifactId>warehouse-database-migrations</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+    <packaging>pom</packaging>
+    <name>warehouse-database-migrations</name>
+
+    <properties>
+        <liquibase.version>4.29.2</liquibase.version>
+        <postgresql.version>42.7.4</postgresql.version>
+        <migration.url>jdbc:postgresql://localhost:5433/reservation_db</migration.url>
+        <migration.username>reservation</migration.username>
+        <migration.password>reservation</migration.password>
+        <migration.changelog>reservation/changelog/db.changelog-master.yaml</migration.changelog>
+    </properties>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.liquibase</groupId>
+                <artifactId>liquibase-maven-plugin</artifactId>
+                <version>${liquibase.version}</version>
+                <configuration>
+                    <url>${migration.url}</url>
+                    <username>${migration.username}</username>
+                    <password>${migration.password}</password>
+                    <changeLogFile>${migration.changelog}</changeLogFile>
+                </configuration>
+                <dependencies>
+                    <dependency>
+                        <groupId>org.postgresql</groupId>
+                        <artifactId>postgresql</artifactId>
+                        <version>${postgresql.version}</version>
+                    </dependency>
+                </dependencies>
+            </plugin>
+        </plugins>
+    </build>
+
+    <profiles>
+        <profile>
+            <id>reservation</id>
+            <properties>
+                <migration.url>jdbc:postgresql://localhost:5433/reservation_db</migration.url>
+                <migration.username>reservation</migration.username>
+                <migration.password>reservation</migration.password>
+                <migration.changelog>reservation/changelog/db.changelog-master.yaml</migration.changelog>
+            </properties>
+        </profile>
+        <profile>
+            <id>inventory</id>
+            <properties>
+                <migration.url>jdbc:postgresql://localhost:5434/inventory_db</migration.url>
+                <migration.username>inventory</migration.username>
+                <migration.password>inventory</migration.password>
+                <migration.changelog>inventory/changelog/db.changelog-master.yaml</migration.changelog>
+            </properties>
+        </profile>
+    </profiles>
+</project>

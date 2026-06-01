@@ -1,3 +1,6 @@
+--liquibase formatted sql
+
+--changeset warehouse:reservation-002-add-item-rejection-details
 ALTER TABLE reservation_items
     ADD COLUMN available_stock INT NULL,
     ADD COLUMN failure_reason TEXT NULL,

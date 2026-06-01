@@ -2,8 +2,6 @@
 
 Microservices-based warehouse inventory reservation system built with Spring Boot.
 
-This repository implements **Challenge 1: Warehouse Inventory Reservation System**. I chose this challenge because stock reservation is concurrency-sensitive by nature, so it is a good fit for demonstrating database locking, state transitions, idempotent messaging, and service boundaries.
-
 The system is split into two services:
 
 - `reservation-service`: exposes reservation APIs and orchestrates the reservation saga.
